@@ -1,25 +1,42 @@
+// server.js
 const express = require("express");
-const cors = require("cors");
 const nodemailer = require("nodemailer");
 const multer = require("multer");
 require("dotenv").config();
 
 const app = express();
 
-// ✅ CORS Setup (allow frontend URL or fallback)
-const corsOptions = {
-  origin: process.env.FRONTEND_URL || "*",
-  methods: ["GET", "POST"],
-  allowedHeaders: ["Content-Type"],
-};
-app.use(cors(corsOptions));
+// ✅ Allowed frontend origins
+const allowedOrigins = [
+  "http://localhost:3000",
+  "https://smartmail-automation-system-client.onrender.com",
+];
+
+// ✅ Middleware to handle CORS dynamically
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+
+  // Preflight request
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+
+  next();
+});
+
 app.use(express.json());
 
-// ✅ Multer setup for multiple file uploads
+// ✅ Multer setup for attachments
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
-// ✅ Nodemailer transporter setup (use Gmail App Password)
+// ✅ Nodemailer setup
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
@@ -28,14 +45,26 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-// ✅ Endpoint to send emails
+// Test route
+app.get("/", (req, res) => res.send("Server running 🚀"));
+
+// Send email endpoint
 app.post("/sendemail", upload.array("attachments"), async (req, res) => {
   const { subject, msg, emailList } = req.body;
-  const parsedEmails = JSON.parse(emailList || "[]");
+
+  let parsedEmails = [];
+  try {
+    parsedEmails = JSON.parse(emailList || "[]");
+  } catch (err) {
+    console.error("Invalid emailList format:", err);
+    return res.status(400).send(false);
+  }
+
+  if (!parsedEmails.length) return res.status(400).send(false);
 
   try {
     for (const recipient of parsedEmails) {
-      const mailOptions = {
+      await transporter.sendMail({
         from: process.env.EMAIL_USER,
         to: recipient,
         subject: subject || "SmartMail Automation System",
@@ -44,17 +73,16 @@ app.post("/sendemail", upload.array("attachments"), async (req, res) => {
           filename: file.originalname,
           content: file.buffer,
         })),
-      };
-      await transporter.sendMail(mailOptions);
+      });
       console.log(`✅ Email sent to ${recipient}`);
     }
     res.send(true);
   } catch (err) {
-    console.error("❌ Error:", err.message);
-    res.send(false);
+    console.error("❌ Error sending emails:", err.message);
+    res.status(500).send(false);
   }
 });
 
-// ✅ Render PORT setup
+// Server port
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));

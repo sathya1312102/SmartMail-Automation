@@ -67,10 +67,20 @@ function App() {
           onUploadProgress: (e) => setProgress(Math.round((e.loaded * 100) / e.total)),
         }
       );
-      alert(res.data === true ? "Emails Sent Successfully ✅" : "Failed ❌");
+
+      if (res.data.success) {
+        alert("Emails Sent Successfully ✅");
+        console.log("All emails sent successfully.");
+      } else {
+        alert("Failed to send emails ❌: " + res.data.error);
+        console.error("Backend error details:", res.data.details);
+      }
     } catch (err) {
-      console.error(err);
-      alert("Error sending email");
+      console.error("Axios error:", err.response?.data || err.message);
+      alert(
+        "Error sending email ❌: " +
+          (err.response?.data?.error || err.message)
+      );
     } finally {
       setStatus(false);
       setProgress(0);

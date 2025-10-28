@@ -1,4 +1,3 @@
-// server.js
 const express = require("express");
 const nodemailer = require("nodemailer");
 const multer = require("multer");
@@ -12,18 +11,21 @@ const allowedOrigins = [
   "https://smartmail-automation-system-client.onrender.com",
 ];
 
-// ✅ CORS middleware
+// ✅ Middleware to handle CORS dynamically
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   if (allowedOrigins.includes(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
   }
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization"
+  );
   res.setHeader("Access-Control-Allow-Credentials", "true");
 
+  // Preflight request
   if (req.method === "OPTIONS") return res.sendStatus(200);
-
   next();
 });
 
@@ -38,7 +40,7 @@ const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
     user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS, // Use App Password if 2FA enabled
+    pass: process.env.EMAIL_PASS,
   },
 });
 
@@ -52,41 +54,34 @@ app.post("/sendemail", upload.array("attachments"), async (req, res) => {
   let parsedEmails = [];
   try {
     parsedEmails = JSON.parse(emailList || "[]");
-    console.log("Emails to send:", parsedEmails);
   } catch (err) {
-    console.error("❌ Invalid emailList format:", err);
-    return res.status(400).send({ success: false, error: "Invalid emailList format" });
+    console.error("Invalid emailList format:", err);
+    return res.status(400).json({ success: false, error: "Invalid email list JSON" });
   }
 
-  if (!parsedEmails.length) {
-    return res.status(400).send({ success: false, error: "No emails provided" });
-  }
+  if (!parsedEmails.length)
+    return res.status(400).json({ success: false, error: "Email list is empty" });
 
   try {
-    const attachments = req.files
-      ? req.files.map((file) => ({
-          filename: file.originalname,
-          content: file.buffer,
-        }))
-      : [];
-
-    console.log("Attachments:", attachments.map((a) => a.filename));
-
     for (const recipient of parsedEmails) {
       await transporter.sendMail({
         from: process.env.EMAIL_USER,
         to: recipient,
         subject: subject || "SmartMail Automation System",
         text: msg,
-        attachments,
+        attachments: req.files.map((file) => ({
+          filename: file.originalname,
+          content: file.buffer,
+        })),
       });
       console.log(`✅ Email sent to ${recipient}`);
     }
-
-    res.send({ success: true });
+    res.json({ success: true, message: "Emails sent successfully" });
   } catch (err) {
     console.error("❌ Error sending emails:", err);
-    res.status(500).send({ success: false, error: err.message });
+    res
+      .status(500)
+      .json({ success: false, error: "Failed to send emails", details: err.message });
   }
 });
 

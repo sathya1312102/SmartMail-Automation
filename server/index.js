@@ -12,7 +12,7 @@ const allowedOrigins = [
   "https://smartmail-automation-system-client.onrender.com",
 ];
 
-// ✅ Middleware to handle CORS dynamically
+// ✅ CORS middleware
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   if (allowedOrigins.includes(origin)) {
@@ -22,10 +22,7 @@ app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   res.setHeader("Access-Control-Allow-Credentials", "true");
 
-  // Preflight request
-  if (req.method === "OPTIONS") {
-    return res.sendStatus(200);
-  }
+  if (req.method === "OPTIONS") return res.sendStatus(200);
 
   next();
 });
@@ -41,7 +38,7 @@ const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
     user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
+    pass: process.env.EMAIL_PASS, // Use App Password if 2FA enabled
   },
 });
 
@@ -55,31 +52,41 @@ app.post("/sendemail", upload.array("attachments"), async (req, res) => {
   let parsedEmails = [];
   try {
     parsedEmails = JSON.parse(emailList || "[]");
+    console.log("Emails to send:", parsedEmails);
   } catch (err) {
-    console.error("Invalid emailList format:", err);
-    return res.status(400).send(false);
+    console.error("❌ Invalid emailList format:", err);
+    return res.status(400).send({ success: false, error: "Invalid emailList format" });
   }
 
-  if (!parsedEmails.length) return res.status(400).send(false);
+  if (!parsedEmails.length) {
+    return res.status(400).send({ success: false, error: "No emails provided" });
+  }
 
   try {
+    const attachments = req.files
+      ? req.files.map((file) => ({
+          filename: file.originalname,
+          content: file.buffer,
+        }))
+      : [];
+
+    console.log("Attachments:", attachments.map((a) => a.filename));
+
     for (const recipient of parsedEmails) {
       await transporter.sendMail({
         from: process.env.EMAIL_USER,
         to: recipient,
         subject: subject || "SmartMail Automation System",
         text: msg,
-        attachments: req.files.map((file) => ({
-          filename: file.originalname,
-          content: file.buffer,
-        })),
+        attachments,
       });
       console.log(`✅ Email sent to ${recipient}`);
     }
-    res.send(true);
+
+    res.send({ success: true });
   } catch (err) {
-    console.error("❌ Error sending emails:", err.message);
-    res.status(500).send(false);
+    console.error("❌ Error sending emails:", err);
+    res.status(500).send({ success: false, error: err.message });
   }
 });
 
